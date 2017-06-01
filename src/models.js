@@ -29,7 +29,7 @@ module.exports = {
 
       documentation.methodResponses.forEach(response => {
         let _response = resource.Properties.MethodResponses
-          .find(originalResponse => originalResponse.StatusCode === response.statusCode);
+          .find(originalResponse => originalResponse.StatusCode == response.statusCode);
 
         if (!_response) {
           _response = {
