@@ -2,14 +2,12 @@
 
 const objectHash = require('object-hash');
 
-const documentationProperties = ['description', 'summary'];
-
 const globalDocumentationParts = require('./globalDocumentationParts.json');
 const functionDocumentationParts = require('./functionDocumentationParts.json');
 
-function  getDocumentationProperties(def) {
+function getDocumentationProperties(def, propertiesToGet) {
   const docProperties = new Map();
-  documentationProperties.forEach((key) => {
+  propertiesToGet.forEach((key) => {
     if (def[key]) {
       docProperties.set(key, def[key]);
     }
@@ -26,6 +24,26 @@ function _mapToObj(map) {
   return returnObj;
 }
 
+/*
+ * Different types support different extra properties beyond
+ * the basic ones, so we need to make sure we only look for
+ * the appropriate properties.
+ */
+function determinePropertiesToGet (type) {
+  const defaultProperties = ['description', 'summary']
+  let result = defaultProperties
+  switch (type) {
+    case 'API':
+      result.push('tags', 'info')
+      break
+    case 'METHOD':
+      result.push('tags')
+      break
+  }
+  return result
+
+}
+
 var autoVersion;
 
 module.exports = function() {
@@ -36,8 +54,9 @@ module.exports = function() {
         return loc;
       }, {});
       location.type = part.type;
+      const propertiesToGet = determinePropertiesToGet(location.type)
 
-      const props = getDocumentationProperties(def);
+      const props = getDocumentationProperties(def, propertiesToGet);
       if (props.size > 0) {
         this.documentationParts.push({
           location,
@@ -122,11 +141,10 @@ module.exports = function() {
       this.createDocumentationParts(globalDocumentationParts, globalDocumentation, {});
     },
 
-
     getFunctionDocumentationParts: function getFunctionDocumentationParts() {
       const httpEvents = this._getHttpEvents();
-      Object.keys(httpEvents).forEach(funcName => {
-        const httpEvent = httpEvents[funcName];
+      Object.keys(httpEvents).forEach(funcNameAndPath => {
+        const httpEvent = httpEvents[funcNameAndPath];
         const path = httpEvent.path;
         const method = httpEvent.method.toUpperCase();
         this.createDocumentationParts(functionDocumentationParts, httpEvent, { path, method });
@@ -136,14 +154,13 @@ module.exports = function() {
     _getHttpEvents: function _getHttpEvents() {
       return this.serverless.service.getAllFunctions().reduce((documentationObj, functionName) => {
         const func = this.serverless.service.getFunction(functionName);
-        const funcHttpEvent = func.events
-        .filter((eventTypes) => eventTypes.http && eventTypes.http.documentation)
-        .map((eventTypes) => eventTypes.http)[0];
-
-        if (funcHttpEvent) {
-          documentationObj[functionName] = funcHttpEvent;
-        }
-
+        func.events
+          .filter((eventTypes) => eventTypes.http && eventTypes.http.documentation)
+          .map((eventTypes) => eventTypes.http)
+          .forEach(currEvent => {
+            let key = functionName + currEvent.method + currEvent.path;
+            documentationObj[key] = currEvent;
+          });
         return documentationObj;
       }, {});
     },
@@ -220,12 +237,19 @@ module.exports = function() {
             eventTypes.http.documentation.queryParams,
             'querystring'
           );
+          this.addDocumentationToApiGateway(
+              resource,
+              eventTypes.http.documentation.pathParams,
+              'path'
+          );
         }
         resource.DependsOn = Array.from(resource.DependsOn);
         if (resource.DependsOn.length === 0) {
           delete resource.DependsOn;
         }
       }
-    }
+    },
+
+    _getDocumentationProperties: getDocumentationProperties
   };
 };
