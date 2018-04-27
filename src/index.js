@@ -31,12 +31,17 @@ class ServerlessAWSDocumentation {
     if (!(this.customVars && this.customVars.documentation)) return;
 
     this.cfTemplate = this.serverless.service.provider.compiledCloudFormationTemplate;
-
+    const apiGateway = this.serverless.service.provider.apiGateway;
+    const restAPIId = apiGateway ? apiGateway.restApiId : null;
     if (this.customVars.documentation.models) {
       // Add model resources
       const models = this.customVars.documentation.models.map(this.createCfModel)
         .reduce((modelObj, model) => {
+          if(restAPIId){
+            model.Properties.RestApiId = restAPIId;
+          }
           modelObj[`${model.Properties.Name}Model`] = model;
+
           return modelObj;
         }, {});
       Object.assign(this.cfTemplate.Resources, models);
@@ -51,7 +56,7 @@ class ServerlessAWSDocumentation {
     // Add models
     this.cfTemplate.Outputs.AwsDocApiId = {
       Description: 'API ID',
-      Value: {
+      Value: restAPIId || {
         Ref: 'ApiGatewayRestApi',
       },
     };
